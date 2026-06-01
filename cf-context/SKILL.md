@@ -75,8 +75,20 @@ Once chosen, reuse that foundation for every CF command for the rest of the
 session **without re-asking** — unless:
 - the user explicitly asks to switch ("use ndc", "change context", "switch
   foundation"), or
-- a command fails with an auth/target error suggesting the context was lost — in
-  that case re-assert `cfctx <chosen>` once; if it still fails, re-list and ask.
+- a command fails because the context was lost or the login expired.
+
+### Reading cfctx's switch output
+
+On switch, `cfctx` prints what happened — interpret it before assuming success:
+- **`✓ cf logged in`** → good, proceed.
+- **`token expired … Please log back in`** (from the `cf` command) → the cached
+  token lapsed. Re-assert `cfctx <chosen>` once (it re-authenticates); then retry.
+- **`cf api failed — check CF_API and network`** / `cf apps` failing right after,
+  with the foundation **unreachable** → the foundation is down or needs VPN. Do
+  **not** loop retrying — tell the user plainly (e.g. "cdc looks unreachable —
+  VPN connected?") and offer to target a different foundation instead. A quick
+  `curl -sk -o /dev/null -w '%{http_code}' --max-time 8 <api-url>` confirms
+  reachability (`000` = unreachable).
 
 ## Guardrails
 
