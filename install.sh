@@ -9,8 +9,8 @@ install_to() {
   local dest_root="$1" label="$2"
   if [ -d "$dest_root" ] || mkdir -p "$dest_root" 2>/dev/null; then
     mkdir -p "$dest_root/cf-context"
-    cp "$SRC/SKILL.md" "$dest_root/cf-context/SKILL.md"
-    echo "  ✓ $label → $dest_root/cf-context/SKILL.md"
+    cp -R "$SRC/." "$dest_root/cf-context/"
+    echo "  ✓ $label → $dest_root/cf-context/"
   else
     echo "  ⚠ skipped $label ($dest_root not writable)"
   fi
