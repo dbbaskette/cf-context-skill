@@ -1,38 +1,36 @@
 # cf-context skill
 
-A portable agent skill (Claude Code + Cursor) that makes an AI assistant pick the
-right **Cloud Foundry / Tanzu foundation** before it runs any CF command — using
-the [`cfctx`](https://github.com/dbbaskette/cfctx) per-shell context switcher.
+An agent skill for selecting and checking an explicitly intended Cloud Foundry /
+Tanzu foundation with [nkuhn-vmw/cfctx](https://github.com/nkuhn-vmw/cfctx).
+Works with agents that load `SKILL.md` directories, including Codex, Claude Code,
+and Cursor.
 
-## What it does
+## Behavior
 
-Before any `cf` / `om` / `bosh` / `credhub` command, if no foundation has been
-chosen yet this session, the assistant:
+- Uses a foundation named by the user or already confirmed for the task; asks
+  only when the target is absent or ambiguous.
+- Prefers upstream `cfctx-env` for noninteractive execution, avoiding interactive
+  shell startup and automatic login/enrichment on each command.
+- Loads the context in each invocation, clears inherited platform variables,
+  stops on load failures, and verifies cached CF API/org/space fields.
+- Preserves literal command arguments and child exit status. Recovery is bounded
+  and never silently switches foundations or replays uncertain mutations.
+- Keeps credential-bearing exports and CF config out of normal inspection output.
 
-1. **Lists** your foundations (`zsh -ic 'cfctx ls'`) and shows the names + API URLs.
-2. **Asks** which one to target — it never auto-picks (prod especially must be explicit).
-3. **Switches** to it with `cfctx`, and **remembers** the choice for the session.
-4. Runs every CF command in that context — `zsh -ic 'cfctx <chosen> && cf …'` — so
-   the per-shell `CF_HOME` actually applies even though each command runs in a
-   fresh shell.
-
-It only re-asks if you say "switch foundation" / "change context", or a command
-fails with an auth/target error.
-
-## Why `zsh -ic`?
-
-`cfctx` is an interactive **shell function** that sets `CF_HOME` (and sources the
-per-context `OM_*` / `BOSH_*` / `CREDHUB_*` env) in the **current shell only**.
-Agent tool calls each run in a fresh, non-interactive shell where the function
-isn't defined — so the skill always invokes it via `zsh -ic '…'` and re-asserts
-the context in the same command as the CF call. First switch logs in; the rest
-are sub-second (tokens cached).
+The helper checks local configuration, not live authentication, user authority,
+remote server identity, or arbitrary command overrides. The skill supplies the
+additional decision rules. Context files must be trusted local shell files.
+Shared per-context caches are not isolated between concurrent commands.
 
 ## Requirements
 
-- [`cfctx`](https://github.com/dbbaskette/cfctx) installed and configured (your
-  foundations show up under `cfctx ls`).
-- `zsh` as the interactive shell with `cfctx` loaded (its installer adds this).
+For the normal path: Bash, `jq`, `cfctx-env` on PATH, configured private
+`context.env` files (mode 600 or 400), and the requested platform CLI. CF commands
+also need a cached configuration whose target agrees with the context.
+
+`cfctx-env` is provided by upstream cfctx; the separate `cfctx-run` workspace
+runner is optional. Recovery, older shell-only installations, and provisioned
+workspace credentials are documented in the skill's runtime reference.
 
 ## Install
 
@@ -40,28 +38,45 @@ are sub-second (tokens cached).
 ./install.sh
 ```
 
-This copies the skill into both global skill directories:
-
-- **Claude Code** → `~/.claude/skills/cf-context/`
-- **Cursor** → `~/.cursor/skills-cursor/cf-context/`
-
-Then start a fresh session and ask for something like `cf apps` — the assistant
-will ask which foundation first.
-
-### Manual install
-
-Copy the `cf-context/` directory into whichever you use:
+Copies the complete skill into `~/.claude/skills/cf-context/` and
+`~/.cursor/skills-cursor/cf-context/`. Re-run to update. For Codex or another
+skill-directory host, copy the complete `cf-context/` folder into its skill root;
+for example:
 
 ```bash
-cp -r cf-context ~/.claude/skills/         # Claude Code (global)
-cp -r cf-context ~/.cursor/skills-cursor/  # Cursor (global)
-# or, per-project Cursor rule:
-cp -r cf-context <project>/.cursor/rules/
+mkdir -p ~/.codex/skills
+cp -R cf-context ~/.codex/skills/
 ```
+
+Start a fresh agent session after installation. Example request:
+"Use cdc and list the apps in my confirmed org/space."
+
+## Verification
+
+No real credentials, platform CLI installation, or foundation access is needed:
+
+```bash
+python3 -m unittest discover -s tests -v
+bash -n install.sh cf-context/scripts/context.sh scripts/ci/guest-test.sh
+```
+
+Tests cover failure-before-execution, inherited state, target mismatches, argument
+quoting, secret-free inspection, exit status, and complete/idempotent installation
+in disposable homes. Set `CF_CONTEXT_TEST_UPSTREAM` to a reviewed local copy of
+upstream `bin/cfctx-env` to repeat the same tests against that implementation.
+This checks compatibility without vendoring upstream or contacting a foundation.
+
+For the existing shared macOS Tart runner, use `scripts/ci/guest-test.sh` as the
+guest entry point; it runs the full suite in a disposable clone and retains logs.
+The runner is development infrastructure, not a skill runtime dependency.
 
 ## Files
 
 | Path | Purpose |
-|------|---------|
-| `cf-context/SKILL.md` | The skill (name + description front-matter + instructions) |
-| `install.sh` | Installs to the Claude Code and Cursor global skill dirs |
+|---|---|
+| `cf-context/SKILL.md` | Target selection, execution, recovery, and completion rules |
+| `cf-context/scripts/context.sh` | Checked inspection and command execution |
+| `cf-context/references/runtime.md` | Conditional procedures and pinned upstream evidence |
+| `tests/test_context.py` | Offline behavioral and installer regression tests |
+| `scripts/ci/guest-test.sh` | Full-suite entry point for the shared Tart runner |
+| `install.sh` | Installs the complete skill for Claude Code and Cursor |
